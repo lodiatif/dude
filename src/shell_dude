@@ -1,0 +1,24 @@
+#!/usr/bin/python
+
+import argparse
+
+from src.dude import keep, tell
+from src.exceptions import ConstraintFailure
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(prog="shell_dude", description='A dude in need is a dude indeed!')
+    parser.add_argument('-k', '--keep', required=False, dest='tags', nargs='?',
+                        help="Tag your secret to retrieve it later")
+    parser.add_argument('secret', help="Tell your secret or ask for one")
+    args = parser.parse_args()
+
+    if args.tags:
+        try:
+            keys, secret_id = keep(args.secret, args.tags)
+            print("Secret kept! You may retrieve it using following keys: %s" % ", ".join(keys))
+        except ConstraintFailure as cfe:
+            print("Youch! %s" % cfe)
+    else:
+        secrets = tell(args.secret)
+        for (id, key, secret, score) in secrets:
+            print("%.2f  %s" % (score, secret))
