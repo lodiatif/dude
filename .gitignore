@@ -35,5 +35,6 @@ ENV/
 
 .idea
 web
-dude.db
+dudefile.db
+dudefile.db.deleted
 setup.sh.local

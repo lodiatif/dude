@@ -1,35 +1,62 @@
 import os
+import re
+import uuid
 
 from nltk.stem.snowball import SnowballStemmer
 
-from src.exceptions import ConstraintFailure
-from src.store import Store, DuplicityError
+_ns = os.environ.get('DUDE_NAMESPACE', 'default')
+_store = os.environ.get('DUDE_DB', 'dudefile.db')
+_store_del = _store + ".deleted"
 
-_store = Store(os.environ['DUDE_DB'])
+_BEGIN_MARKER = "====<BR %s>===="
+_BEGIN_MARKER_RE = "====<BR (.*)>===="
+_END_MARKER = "====<ER>===="
 
 
-def put(key, secret):
+class Secret:
+    def serialize(self, sid, key, secret, derived_keys=[], fuzzy_keys=[], username=None):
+        self.sid = sid
+        self.username = username if username else ''
+        self.key = key
+        self.secret = secret
+        self.derived_keys = derived_keys
+        self.fuzzy_keys = fuzzy_keys
+
+        return "\n".join(
+            [_BEGIN_MARKER % sid, self.username, self.key, " ".join(self.derived_keys + self.fuzzy_keys), self.secret,
+             _END_MARKER])
+
+    def deserialize(self, record):
+        _bm, self.username, self.key, _keys, *_secret, _em = record.split("\n")
+        if not self.username:
+            self.username = None
+        self.sid = re.search(_BEGIN_MARKER_RE, _bm).group(1)
+        _keys = _keys.split()
+        _mid = int(len(_keys) / 2)
+        self.secret = "\n".join(_secret)
+        self.derived_keys, self.fuzzy_keys = _keys[:_mid], _keys[_mid:]
+        return self
+
+
+def put(key, secret, username=None):
     """
     Store a secret and associate it with derived key words.
     The key parameter is split and every word (excluding stop words) is associated with the secret along with a
     matching strength score.
 
+    :param username: user name
     :param key: key as provided by end-user
     :param secret: secret content
     :return: a tuple containing derived key words and the secret's ID assigned in database
     """
+    key = key.lower()
     keys = _explode(key)
-    orig_keys, stemmed_keys = list(zip(*keys))
-    derived_keys_len = len(keys) - 1
-    scores = [1.0, ]
-    if derived_keys_len > 0:
-        scores += [1 / derived_keys_len] * derived_keys_len
-    try:
-        secret_id = _store.put_secret(secret)
-    except DuplicityError:
-        raise ConstraintFailure("Secret already exist")
-    _store.map_keys_secret(secret_id, stemmed_keys, scores)
-    return orig_keys, secret_id
+    orig_keys, stemmed_keys = list(zip(*keys)) if keys else ([], [])
+    obj = Secret()
+    record = obj.serialize(uuid.uuid4(), key, secret, orig_keys, stemmed_keys, username=username)
+    with open(_store, "a") as f:
+        f.write("\n%s" % record)
+    return [obj.key] + obj.derived_keys, obj.sid
 
 
 def remove(secret_id):
@@ -38,32 +65,65 @@ def remove(secret_id):
 
     :param secret_id: secret's ID
     """
-    _store.remove_secret(secret_id)
+    with open(_store_del, "a") as f:
+        f.write("%s\n" % str(secret_id))
 
 
-def get(key):
+def get(key, username=None):
     """
     Get a collection of secrets associated with the key.
 
+    :param username: user name
     :param key: the key
     :return: a list of tuples containing the following: secret ID, key, secret, score
     """
-    secrets = _store.get_secrets_by_key(key)
-    if not secrets:
-        keys = _explode(key)
-        for k in keys:
-            secrets += _store.get_secrets_by_key(k[1])
+    key_set = set()
+    secrets = []
+    with open(_store_del, "r") as d:
+        _deleted = set(d.read().split("\n"))
+    with open(_store, "r") as f:
+        for l in f:
+            match = re.search(_BEGIN_MARKER_RE, l.strip())
+            if match:
+                secret_id = match.groups()[0]
+                _username = f.readline().strip()
+                if secret_id not in _deleted:
+                    if username and _username != username or not username and _username:
+                        continue
+                    key_set.add(f.readline().strip())
+                    key_set = key_set.union(f.readline().strip().split(" "))
+                    if key.lower() in key_set:
+                        secret_tokens = []
+                        for l in f:
+                            if l.strip() == _END_MARKER:
+                                break
+                            secret_tokens.append(l.strip())
+                        secrets.append((secret_id, key, "\n".join(secret_tokens), 0))
+
     return secrets
 
 
-def list_absolute_keys():
+def list_absolute_keys(username=None):
     """
     Get a collection of keys (tags) that have a score of 1 - essentially keys input by end-user while storing secrets.
 
+    :param username: user name
     :return: a list of absolute keys
     """
-    keys = _store.list_absolute_keys()
-    return [key[0] for key in keys]
+    keys = []
+    with open(_store_del, "r") as d:
+        _deleted = set(d.read().split("\n"))
+    with open(_store, "r") as f:
+        for l in f:
+            match = re.search(_BEGIN_MARKER_RE, l.strip())
+            if match:
+                secret_id = match.groups()[0]
+                _username = f.readline().strip()
+                if username and username != _username:
+                    continue
+                if secret_id not in _deleted:
+                    keys.append(f.readline().strip())
+    return keys
 
 
 def _explode(key):
@@ -74,7 +134,6 @@ def _explode(key):
     :return: list of tuples containing original and stemmed words
     """
     key = key.lower()
-    keys = []  # [(key, key), ]
     words = set(key.split())
     derived_keys = set()
     for word in words:
@@ -82,13 +141,11 @@ def _explode(key):
         for ok, k in ret:
             derived_keys.add((ok, k))
     keys = list(derived_keys)
-    if key not in [k[0] for k in keys]:
-        keys = [(key, key), ] + keys
     return keys
 
 
 # TODO externalize stop words
-_stop_words = {"a", "a's", "able", "about", "above", "according", "accordingly", "across", "actually", "after",
+_stop_words = {"a", "is", "a's", "able", "about", "above", "according", "accordingly", "across", "actually", "after",
                "afterwards",
                "again", "against", "ain't", "all", "allow", "allows", "almost", "alone", "along", "already", "also",
                "although", "always", "am", "among", "amongst", "an", "and", "another", "any", "anybody", "anyhow",
@@ -152,3 +209,7 @@ def _stem(word):
         if word not in _stop_words:
             out_word_set.add((word, stemmer.stem(word)))
     return out_word_set
+
+# keys, secret_id = put("here is my mobile number", "multi line\nmobile\n9867")
+# remove(secret_id)
+# print(get("here is my mobile number"))

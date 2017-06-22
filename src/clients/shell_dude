@@ -1,12 +1,14 @@
 #!/usr/bin/python
 
 import argparse
+import getpass
 
-from src.da import list_absolute_keys
-from src.dude import keep, tell
+from src.dude import keep, tell, list_absolute_keys
 from src.exceptions import ConstraintFailure
 
 if __name__ == '__main__':
+    username = getpass.getuser()
+
     parser = argparse.ArgumentParser(prog="shell_dude", description='A dude in need is a dude indeed!')
     parser.add_argument('-k', '--keep', required=False, dest='tags', nargs='?',
                         help="Tag your secret to retrieve it later")
@@ -17,18 +19,18 @@ if __name__ == '__main__':
 
     if args.tags:
         try:
-            keys, secret_id = keep(args.secret, args.tags)
+            keys, secret_id = keep(args.secret, args.tags, username)
             print("Secret kept! You may retrieve it using following keys: %s" % ", ".join(keys))
         except ConstraintFailure as cfe:
             print("Youch! %s" % cfe)
     elif args.lst:
         try:
-            keys = list_absolute_keys()
+            keys = list_absolute_keys(username)
             print("\n".join(keys))
         except ConstraintFailure as cfe:
             print("Youch! %s" % cfe)
 
     else:
-        secrets = tell(args.secret)
+        secrets = tell(args.secret, username)
         for (id, key, secret, score) in secrets:
             print("%.2f  %s" % (score, secret))

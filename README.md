@@ -24,7 +24,7 @@ The result also has a score associated with each score.
 #### Setup
 
 Suggest you use a virtual-environment, but its a suggestion, do what you want.
-So once you've done what you want source the setup shell-script file like so:
+Once you've done what you wanted, source the setup shell-script file like so:
 
 ```shell
 $ source setup.sh
@@ -33,16 +33,17 @@ $ source setup.sh
 It does the following:
 1. installs required python packages
 2. sets some environment variables - feel free to fiddle with them
-3. copies a sqlite3 db from a template (oh and deletes the template)
 
 #### Sample shell usage
 
 ```shell
+$ cd src/clients
+
 # ask dude to keep a secret
 $ ./shell_dude --keep=foo bar
 Secret kept! You may retrieve it using following keys: foo
 
-# ask dude to tell you secret associated with a tag (key) (the number before the result is a score - explained later)
+# ask dude to tell you secret associated with a tag (key) (the number before the result is a score - explained earlier)
 $ ./shell_dude foo
 1.00  bar
 
