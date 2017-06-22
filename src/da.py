@@ -5,7 +5,7 @@ from nltk.stem.snowball import SnowballStemmer
 from src.exceptions import ConstraintFailure
 from src.store import Store, DuplicityError
 
-_DB_NAME = os.environ['DUDE_DB']
+_store = Store(os.environ['DUDE_DB'])
 
 
 def put(key, secret):
@@ -18,16 +18,18 @@ def put(key, secret):
     :param secret: secret content
     :return: a tuple containing derived key words and the secret's ID assigned in database
     """
-    tokens = _explode(key)
-    keys = {key, }.union(tokens)
-    scores = [1.0, ] + [1 / len(keys)] * len(tokens)
-    with Store(_DB_NAME) as store:
-        try:
-            secret_id = store.put_secret(secret)
-        except DuplicityError:
-            raise ConstraintFailure("Secret already exist")
-        store.map_keys_secret(secret_id, keys, scores)
-    return keys, secret_id
+    keys = _explode(key)
+    orig_keys, stemmed_keys = list(zip(*keys))
+    derived_keys_len = len(keys) - 1
+    scores = [1.0, ]
+    if derived_keys_len > 0:
+        scores += [1 / derived_keys_len] * derived_keys_len
+    try:
+        secret_id = _store.put_secret(secret)
+    except DuplicityError:
+        raise ConstraintFailure("Secret already exist")
+    _store.map_keys_secret(secret_id, stemmed_keys, scores)
+    return orig_keys, secret_id
 
 
 def remove(secret_id):
@@ -36,8 +38,7 @@ def remove(secret_id):
 
     :param secret_id: secret's ID
     """
-    with Store(_DB_NAME) as store:
-        store.remove_secret(secret_id)
+    _store.remove_secret(secret_id)
 
 
 def get(key):
@@ -47,9 +48,22 @@ def get(key):
     :param key: the key
     :return: a list of tuples containing the following: secret ID, key, secret, score
     """
-    with Store(_DB_NAME) as store:
-        secrets = store.get_secrets_by_key(key)
+    secrets = _store.get_secrets_by_key(key)
+    if not secrets:
+        keys = _explode(key)
+        for k in keys:
+            secrets += _store.get_secrets_by_key(k[1])
     return secrets
+
+
+def list_absolute_keys():
+    """
+    Get a collection of keys (tags) that have a score of 1 - essentially keys input by end-user while storing secrets.
+
+    :return: a list of absolute keys
+    """
+    keys = _store.list_absolute_keys()
+    return [key[0] for key in keys]
 
 
 def _explode(key):
@@ -57,19 +71,25 @@ def _explode(key):
     Derives all possible keywords from input key. All the stop words are excluded.
 
     :param key: key as provided by end-user
-    :return: set of key words
+    :return: list of tuples containing original and stemmed words
     """
+    key = key.lower()
+    keys = []  # [(key, key), ]
     words = set(key.split())
-    word_set = set()
+    derived_keys = set()
     for word in words:
         ret = _stem(word)
-        for w in ret:
-            word_set.add(w)
-    return word_set
+        for ok, k in ret:
+            derived_keys.add((ok, k))
+    keys = list(derived_keys)
+    if key not in [k[0] for k in keys]:
+        keys = [(key, key), ] + keys
+    return keys
 
 
 # TODO externalize stop words
-_stop_words = {"a's", "able", "about", "above", "according", "accordingly", "across", "actually", "after", "afterwards",
+_stop_words = {"a", "a's", "able", "about", "above", "according", "accordingly", "across", "actually", "after",
+               "afterwards",
                "again", "against", "ain't", "all", "allow", "allows", "almost", "alone", "along", "already", "also",
                "although", "always", "am", "among", "amongst", "an", "and", "another", "any", "anybody", "anyhow",
                "anyone", "anything", "anyway", "anyways", "anywhere", "apart", "appear", "appreciate", "appropriate",
@@ -130,5 +150,5 @@ def _stem(word):
     stemmer = SnowballStemmer("english")
     for word in in_word_set:
         if word not in _stop_words:
-            out_word_set.add(stemmer.stem(word))
+            out_word_set.add((word, stemmer.stem(word)))
     return out_word_set

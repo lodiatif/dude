@@ -2,6 +2,7 @@
 
 import argparse
 
+from src.da import list_absolute_keys
 from src.dude import keep, tell
 from src.exceptions import ConstraintFailure
 
@@ -9,6 +10,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog="shell_dude", description='A dude in need is a dude indeed!')
     parser.add_argument('-k', '--keep', required=False, dest='tags', nargs='?',
                         help="Tag your secret to retrieve it later")
+    parser.add_argument('-l', '--list', dest='lst', required=False, action='store_true',
+                        help="List all tags")
     parser.add_argument('secret', help="Tell your secret or ask for one")
     args = parser.parse_args()
 
@@ -18,6 +21,13 @@ if __name__ == '__main__':
             print("Secret kept! You may retrieve it using following keys: %s" % ", ".join(keys))
         except ConstraintFailure as cfe:
             print("Youch! %s" % cfe)
+    elif args.lst:
+        try:
+            keys = list_absolute_keys()
+            print("\n".join(keys))
+        except ConstraintFailure as cfe:
+            print("Youch! %s" % cfe)
+
     else:
         secrets = tell(args.secret)
         for (id, key, secret, score) in secrets:

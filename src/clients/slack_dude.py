@@ -39,6 +39,8 @@ _sarcasm = (":expressionless: let's be good to each other.", ":disappointed: qui
             ":confused: should i lol or roflmao?", ":thought_balloon: use intuition. its free.",
             "lets try that again, shall we? :metal: ", "I don't think it means what you think it means. :smirk_cat:",)
 
+_error_msg = "Eeks! I am still new, so expect a little hiccups. Ask atif to fix the following.."
+
 
 def _keep(channel_id, channel_name, user_id, user_name, command, text, response_url):
     print(text)
@@ -53,8 +55,7 @@ def _keep(channel_id, channel_name, user_id, user_name, command, text, response_
             res = "\n".join(
                 ["You've erred..but if the following sounds like a missing feature, let atif know:", str(cfe)])
         except Exception as e:
-            res = "\n".join(
-                ["Eeks! I am still new, so expect a little hiccups. Ask atif to fix the following..", str(e)])
+            res = "\n".join([_error_msg, str(e)])
     return res
 
 
@@ -70,10 +71,21 @@ def _tell(channel_id, channel_name, user_id, user_name, command, text, response_
             else:
                 res = str(secrets[0][2])
         except Exception as e:
-            res = "\n".join(
-                ["Eeks! I am still new, so expect a little hiccups. Ask atif to fix the following..", str(e)])
+            res = "\n".join([_error_msg, str(e)])
     else:
         res = "\n".join(["I am gonna need a tag %s! I am no God!" % user_name, "Hint: /tell <tag>"])
+    return res
+
+
+def _list(channel_id, channel_name, user_id, user_name, command, text, response_url):
+    try:
+        keys = dude.list_absolute_keys()
+        if keys:
+            res = "\n".join(["Found these..", ] + keys)
+        else:
+            res = "Tell me few secrets first."
+    except Exception as e:
+        res = "\n".join([_error_msg, str(e)])
     return res
 
 

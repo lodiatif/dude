@@ -8,3 +8,7 @@ def keep(secret, key):
 def tell(tag):
     secrets = da.get(tag)
     return secrets
+
+
+def list_absolute_keys():
+    return da.list_absolute_keys()
