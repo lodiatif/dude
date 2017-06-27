@@ -1,129 +1,69 @@
 import os
-import re
-import uuid
+
+import sys
+
+_storage = os.environ.get("DUDE_STORE", "file")
+if _storage.lower() == "file":
+    print("[Using file as storage]")
+    from src.stores import file as store
+elif _storage.lower() == "mongodb":
+    print("[Using mongodb as storage]")
+    from src.stores import mongodb as store
+else:
+    print("Storage %s not supported" % _storage)
+    sys.exit(1)
 
 from nltk.stem.snowball import SnowballStemmer
 
-_ns = os.environ.get('DUDE_NAMESPACE', 'default')
-_store = os.environ.get('DUDE_DB', 'dudefile.db')
-_store_del = _store + ".deleted"
 
-_BEGIN_MARKER = "====<BR %s>===="
-_BEGIN_MARKER_RE = "====<BR (.*)>===="
-_END_MARKER = "====<ER>===="
-
-
-class Secret:
-    def serialize(self, sid, key, secret, derived_keys=[], fuzzy_keys=[], username=None):
-        self.sid = sid
-        self.username = username if username else ''
-        self.key = key
-        self.secret = secret
-        self.derived_keys = derived_keys
-        self.fuzzy_keys = fuzzy_keys
-
-        return "\n".join(
-            [_BEGIN_MARKER % sid, self.username, self.key, " ".join(self.derived_keys + self.fuzzy_keys), self.secret,
-             _END_MARKER])
-
-    def deserialize(self, record):
-        _bm, self.username, self.key, _keys, *_secret, _em = record.split("\n")
-        if not self.username:
-            self.username = None
-        self.sid = re.search(_BEGIN_MARKER_RE, _bm).group(1)
-        _keys = _keys.split()
-        _mid = int(len(_keys) / 2)
-        self.secret = "\n".join(_secret)
-        self.derived_keys, self.fuzzy_keys = _keys[:_mid], _keys[_mid:]
-        return self
-
-
-def put(key, secret, username=None):
+def put(key, secret, username):
     """
     Store a secret and associate it with derived key words.
     The key parameter is split and every word (excluding stop words) is associated with the secret along with a
     matching strength score.
 
-    :param username: user name
     :param key: key as provided by end-user
     :param secret: secret content
+    :param username: user name
     :return: a tuple containing derived key words and the secret's ID assigned in database
     """
     key = key.lower()
     keys = _explode(key)
-    orig_keys, stemmed_keys = list(zip(*keys)) if keys else ([], [])
-    obj = Secret()
-    record = obj.serialize(uuid.uuid4(), key, secret, orig_keys, stemmed_keys, username=username)
-    with open(_store, "a") as f:
-        f.write("\n%s" % record)
-    return [obj.key] + obj.derived_keys, obj.sid
+    derived_keys, stemmed_keys = list(zip(*keys)) if keys else ([], [])
+    secret_id = store.put(secret, key, derived_keys, stemmed_keys, username)
+    return set([key] + list(derived_keys) + list(stemmed_keys)), secret_id
 
 
-def remove(secret_id):
+def remove(secret_id, username):
     """
     Forget a secret.
 
     :param secret_id: secret's ID
+    :param username: user name
     """
-    with open(_store_del, "a") as f:
-        f.write("%s\n" % str(secret_id))
+    store.remove(secret_id, username)
 
 
-def get(key, username=None):
+def get(key, username):
     """
     Get a collection of secrets associated with the key.
 
     :param username: user name
     :param key: the key
-    :return: a list of tuples containing the following: secret ID, key, secret, score
+    :return: a list of tuples containing the following: secret ID, original key, secret content, timestamp
     """
-    key_set = set()
-    secrets = []
-    with open(_store_del, "r") as d:
-        _deleted = set(d.read().split("\n"))
-    with open(_store, "r") as f:
-        for l in f:
-            match = re.search(_BEGIN_MARKER_RE, l.strip())
-            if match:
-                secret_id = match.groups()[0]
-                _username = f.readline().strip()
-                if secret_id not in _deleted:
-                    if username and _username != username or not username and _username:
-                        continue
-                    key_set.add(f.readline().strip())
-                    key_set = key_set.union(f.readline().strip().split(" "))
-                    if key.lower() in key_set:
-                        secret_tokens = []
-                        for l in f:
-                            if l.strip() == _END_MARKER:
-                                break
-                            secret_tokens.append(l.strip())
-                        secrets.append((secret_id, key, "\n".join(secret_tokens), 0))
-
-    return secrets
+    key = key.lower()
+    return store.get(key, username)
 
 
-def list_absolute_keys(username=None):
+def list_absolute_keys(username):
     """
     Get a collection of keys (tags) that have a score of 1 - essentially keys input by end-user while storing secrets.
 
     :param username: user name
     :return: a list of absolute keys
     """
-    keys = []
-    with open(_store_del, "r") as d:
-        _deleted = set(d.read().split("\n"))
-    with open(_store, "r") as f:
-        for l in f:
-            match = re.search(_BEGIN_MARKER_RE, l.strip())
-            if match:
-                secret_id = match.groups()[0]
-                _username = f.readline().strip()
-                if username and username != _username:
-                    continue
-                if secret_id not in _deleted:
-                    keys.append(f.readline().strip())
-    return keys
+    return store.get_keys(username)
 
 
 def _explode(key):
@@ -145,8 +85,8 @@ def _explode(key):
 
 
 # TODO externalize stop words
-_stop_words = {"a", "is", "a's", "able", "about", "above", "according", "accordingly", "across", "actually", "after",
-               "afterwards",
+_stop_words = {"-", "_", "a", "is", "a's", "able", "about", "above", "according", "accordingly", "across", "actually",
+               "after", "afterwards",
                "again", "against", "ain't", "all", "allow", "allows", "almost", "alone", "along", "already", "also",
                "although", "always", "am", "among", "amongst", "an", "and", "another", "any", "anybody", "anyhow",
                "anyone", "anything", "anyway", "anyways", "anywhere", "apart", "appear", "appreciate", "appropriate",
@@ -209,7 +149,3 @@ def _stem(word):
         if word not in _stop_words:
             out_word_set.add((word, stemmer.stem(word)))
     return out_word_set
-
-# keys, secret_id = put("here is my mobile number", "multi line\nmobile\n9867")
-# remove(secret_id)
-# print(get("here is my mobile number"))

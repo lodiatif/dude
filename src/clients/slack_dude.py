@@ -5,7 +5,6 @@ from random import randint
 from bottle import route, run, request
 
 from src import dude
-from src.exceptions import ConstraintFailure
 
 _SERVER_HOST = os.environ['DUDE_SLACK_HOST']
 _SERVER_PORT = os.environ['DUDE_SLACK_PORT']
@@ -51,9 +50,6 @@ def _keep(channel_id, channel_name, user_id, user_name, command, text, response_
         try:
             dude.keep(secret[0], tag)
             res = "\n".join(["Kept! To recall just holla..", "Hint: /tell %s" % tag])
-        except ConstraintFailure as cfe:
-            res = "\n".join(
-                ["You've erred..but if the following sounds like a missing feature, let atif know:", str(cfe)])
         except Exception as e:
             res = "\n".join([_error_msg, str(e)])
     return res

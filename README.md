@@ -23,6 +23,7 @@ The result also has a score associated with each score.
 
 #### Setup
 
+dude is built on python 3.
 Suggest you use a virtual-environment, but its a suggestion, do what you want.
 Once you've done what you wanted, source the setup shell-script file like so:
 
@@ -33,6 +34,32 @@ $ source setup.sh
 It does the following:
 1. installs required python packages
 2. sets some environment variables - feel free to fiddle with them
+
+In case you want it available for all bash sessions, add the following environment variables in ~/.bash_profile file:
+
+```shell
+# Namespaces sandboxes your secrets
+export DUDE_NAMESPACE="default"
+
+# Required for dude to run - weird though :/ (will fix it soon)
+export PYTHONPATH=$PYTHONPATH:<PATH-TO-dude-DIR>/
+
+# In case you plan to integrate dude in your team's slack
+export DUDE_SLACK_HOST='localhost'
+export DUDE_SLACK_PORT=4390
+
+# dude supports 2 storage modes for now: file and MongoDB
+export DUDE_STORE="file"
+
+# In case you choose file as your storage, give it the storage file path
+export DUDE_FILE_DB="<CHOOSE-PATH>/dudefile.db"
+
+# In case you choose MongoDB as your storage, configure MongoDB
+export DUDE_MDB_URI="mongodb://localhost:27017/"
+export DUDE_MDB_NAME="dude"
+export DUDE_MDB_COLLECTION="secrets"
+
+```
 
 #### Sample shell usage
 

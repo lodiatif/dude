@@ -2,9 +2,13 @@
 
 import argparse
 import getpass
+from tzlocal import get_localzone
+
+
+import pytz
+import time
 
 from src.dude import keep, tell, list_absolute_keys
-from src.exceptions import ConstraintFailure
 
 if __name__ == '__main__':
     username = getpass.getuser()
@@ -18,19 +22,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.tags:
-        try:
-            keys, secret_id = keep(args.secret, args.tags, username)
-            print("Secret kept! You may retrieve it using following keys: %s" % ", ".join(keys))
-        except ConstraintFailure as cfe:
-            print("Youch! %s" % cfe)
+        keys, secret_id = keep(args.secret, args.tags, username)
+        print(
+            "Secret kept! You may retrieve it using following keys: %s\nInternal ID: %s" % (", ".join(keys), secret_id))
     elif args.lst:
-        try:
-            keys = list_absolute_keys(username)
-            print("\n".join(keys))
-        except ConstraintFailure as cfe:
-            print("Youch! %s" % cfe)
-
+        keys = list_absolute_keys(username)
+        print("\n".join(keys))
     else:
         secrets = tell(args.secret, username)
-        for (id, key, secret, score) in secrets:
-            print("%.2f  %s" % (score, secret))
+        for (id, key, secret, ts) in secrets:
+            ts = ts.replace(tzinfo=pytz.UTC).astimezone(get_localzone()).strftime("%c")
+            print("[%s] %s - %s" % (ts, key, secret))

@@ -1,14 +1,14 @@
-from src import file_da as da
+from src import da
 
 
-def keep(secret, key, username=None):
+def keep(secret, key, username):
     return da.put(key, secret, username)
 
 
-def tell(tag, username=None):
+def tell(tag, username):
     secrets = da.get(tag, username)
     return secrets
 
 
-def list_absolute_keys(username=None):
+def list_absolute_keys(username):
     return da.list_absolute_keys(username)
